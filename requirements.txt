@@ -1,0 +1,7 @@
+boto3==1.40.11
+openai==1.101
+streamlit==1.48.1
+pycaret==3.3.2
+pandas==2.1.4
+faker==37.5.3
+numpy==2.1
