@@ -6,3 +6,4 @@ python-dotenv==1.1.0
 pycaret==3.3.2
 langfuse==2.51.4
 boto3==1.24
+Faker==30.8.1
