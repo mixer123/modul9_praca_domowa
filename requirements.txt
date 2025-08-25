@@ -1,11 +1,7 @@
-numpy==1.26.1
-pandas==1.5.3
-matplotlib==3.8.0
-seaborn==0.12.2
-scikit-learn==1.5.2
+streamlit>=1.48.0
+openai==1.62.0
+pandas==2.1.4
+scikit-learn==1.4.2
+python-dotenv==1.1.0
 pycaret==3.3.2
-
-streamlit==1.25.0
-Faker==18.9.0
-boto3==1.29.24
-python-dotenv==1.0.0
+langfuse==2.51.4
