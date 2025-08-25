@@ -5,4 +5,4 @@ scikit-learn==1.4.2
 python-dotenv==1.1.0
 pycaret==3.3.2
 langfuse==2.51.4
-boto3==1.29.24
+boto3==1.24
