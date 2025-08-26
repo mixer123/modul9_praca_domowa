@@ -12,6 +12,7 @@ import tempfile
 import streamlit as st
 from pycaret.regression import setup, compare_models, tune_model, save_model, load_model, predict_model, create_model
 from openai import OpenAI
+from langfuse import Langfuse
 
 # =========================
 # 🔑 Konfiguracja i stałe
@@ -23,16 +24,25 @@ DO_SPACE_NAME = 'pracadomowamodul9'
 DO_ENDPOINT_URL = 'https://fra1.digitaloceanspaces.com'
 DO_ACCESS_KEY = os.getenv('aws_access_key_id')
 DO_SECRET_KEY = os.getenv('aws_secret_access_key')
+secret_key=os.getenv("secret_key")
+public_key=os.getenv('public_key')
+host="https://cloud.langfuse.com"
 
 
 
 
 
-DATA_FILE_2023 = 'halfmarathon_wroclaw_2023__final.csv'
-DATA_FILE_2024 = 'halfmarathon_wroclaw_2024__final.csv'
+# DATA_FILE_2023 = 'halfmarathon_wroclaw_2023__final.csv'
+# DATA_FILE_2024 = 'halfmarathon_wroclaw_2024__final.csv'
 MODEL_FILE = "models/best_gbr_model.pkl"
 
 REQUIRED_COLS = ["Czas", "Rocznik", "Płeć", "5 km Tempo", "10 km Tempo", "15 km Tempo"]
+
+langfuse = Langfuse(
+    public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
+    secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
+    host=os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+)
 
 # =========================
 # 🚀 Klienci
@@ -73,7 +83,7 @@ def load_all_csv_from_do(bucket_name: str, prefix: str = "") -> pd.DataFrame:
 
         if all_dfs:
             merged_df = pd.concat(all_dfs, ignore_index=True)
-            st.success(f"✅ Scalono {len(all_dfs)} plików z DO")
+            # st.success(f"✅ Scalono {len(all_dfs)} plików z DO")
             return merged_df
         else:
             st.warning("⚠️ Nie znaleziono plików CSV w DO.")
@@ -175,7 +185,17 @@ Zwróć TYLKO poprawny JSON, bez dodatkowego tekstu.
 Klucze: "Wiek", "Płeć", "5 km Tempo", "10 km Tempo", "15 km Tempo"
 Uytkownik podaje dane liczbowe w sekundach. Ty tez podajesz w sekundach
 """
+    # Utwórz trace (ślad)
+    trace = langfuse.trace(name="extract_user_data")
+
     try:
+        # Logujemy prompt użytkownika
+        trace.event(
+            name="user_input",
+            input=text
+        )
+
+        # Wywołanie modelu OpenAI
         response = openai_client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[
@@ -184,12 +204,31 @@ Uytkownik podaje dane liczbowe w sekundach. Ty tez podajesz w sekundach
             ],
             temperature=0
         )
+
         raw_text = response.choices[0].message.content
+
+        # Logujemy odpowiedź modelu
+        trace.event(
+            name="openai_response",
+            output=raw_text
+        )
+
+        # Parsowanie JSON
         json_str_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
         if not json_str_match:
             raise ValueError("Brak obiektu JSON w odpowiedzi modelu.")
-        return json.loads(json_str_match.group())
+        parsed = json.loads(json_str_match.group())
+
+        langfuse.flush()  # zakończ śledzenie
+
+        return parsed
+
     except Exception as e:
+        trace.event(
+            name="error",
+            output=str(e)
+        )
+        langfuse.flush()
         st.error("⚠️ Nie udało się sparsować odpowiedzi LLM do JSON.")
         st.exception(e)
         return None
@@ -248,7 +287,7 @@ def main():
             if model:
                 try:
                     prediction = predict_model(model, data=df_input)
-                    st.success(f"⏱️ Przewidywany czas biegu: {prediction['prediction_label'].iloc[0]:.2f} minut")
+                    st.success(f"⏱️ Przewidywany czas biegu: {prediction['prediction_label'].iloc[0]:.2f} sekund")
                     with st.expander("Dane wejściowe użyte do predykcji"):
                         st.dataframe(df_input)
                 except Exception as e:
@@ -260,12 +299,14 @@ def main():
     # --- Zakładka Trenowanie ---
     with tab2:
         st.subheader("📂 Wgraj dane treningowe (CSV)")
+        progress_bar = st.progress(0)
+        status_text = st.empty()
         uploaded_files = st.file_uploader("Wybierz pliki CSV", type=["csv"], accept_multiple_files=True)
         if uploaded_files:
             dfs = []
             for uploaded_file in uploaded_files:
                 try:
-                    df = pd.read_csv(uploaded_file)
+                    df = pd.read_csv(uploaded_file, sep=';')
                     dfs.append(df)
                     st.success(f"📄 Wczytano plik: {uploaded_file.name} ({df.shape[0]} rekordów)")
                     with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
@@ -288,17 +329,19 @@ def main():
                 st.info(f"📊 Łącznie {df_train.shape[0]} rekordów z {len(dfs)} plików")
                 with st.expander("Podgląd połączonych danych"):
                     st.dataframe(df_train.head())
-                obj_2023 = s3_client.get_object(Bucket=DO_SPACE_NAME, Key=DATA_FILE_2023)
-                df_2023 = pd.read_csv(BytesIO(obj_2023['Body'].read()),sep=';')
-                obj_2024 = s3_client.get_object(Bucket=DO_SPACE_NAME, Key=DATA_FILE_2024)
-                df_2024 = pd.read_csv(BytesIO(obj_2024['Body'].read()),sep=';')
+                # obj_2023 = s3_client.get_object(Bucket=DO_SPACE_NAME, Key=DATA_FILE_2023)
+                # df_2023 = pd.read_csv(BytesIO(obj_2023['Body'].read()),sep=';')
+                # obj_2024 = s3_client.get_object(Bucket=DO_SPACE_NAME, Key=DATA_FILE_2024)
+                # df_2024 = pd.read_csv(BytesIO(obj_2024['Body'].read()),sep=';')
 
                 # Utworzenie kolumny Rok
-                df_2023['Rok']=2023
-                df_2024['Rok']=2024
+                # df_2023['Rok']=2023
+                # df_2024['Rok']=2024
 
                 # Wypełniam puste miejsca
-                df = pd.concat([df_2023, df_2024], ignore_index=True)
+                # df = pd.concat([df_2023, df_2024], ignore_index=True)
+                df=df_train.copy()
+               
                 # Wybieram tylko te rekordy które nie maja nan w kolumnie Czas czyli ci co ukonczyli bieg
                 df = df[df['Czas'].notna()]
 
@@ -374,18 +417,26 @@ def main():
                
                 st.success(f"✅ Wczytano plik , {len(df_train)} rekordów po oczyszczeniu danych ")
                
-
+                status_text.text("🔄 Przygotowanie danych...")
                 exp = setup(data=df_train, target='Czas', session_id=123, normalize=True)
+                progress_bar.progress(30)
+                status_text.text("🤖 Porównywanie modeli...")
                 best = compare_models()
+                progress_bar.progress(60)
+                status_text.text("⚡ Tworzenie i strojenie modelu...")
                 create_model_ = create_model('gbr')
                 tuned_lr = tune_model(create_model_)
+                progress_bar.progress(90)
+
 
                 # Zapis modelu
+                status_text.text("💾 Zapis modelu...")
                 save_model(tuned_lr, 'best_gbr_model')
+                progress_bar.progress(100)
                 file_name = "best_gbr_model.pkl"
                 object_name = "models/best_gbr_model.pkl"
                 client_do.upload_file(file_name, DO_SPACE_NAME, object_name)
-                print("✅ Model zapisany w DigitalOcean Spaces!")
+                # print("✅ Model zapisany w DigitalOcean Spaces!")
 
 
                 # df_train = pd.read_csv(uploaded_file)
@@ -403,10 +454,10 @@ def main():
             with col1:
                 if st.button("🗑️ Usuń zaznaczony plik"):
                     delete_file_from_do(file_to_delete)
-                    st.experimental_rerun()
+                    st.rerun()
             with col2:
                 if st.button("🔄 Odśwież listę"):
-                    st.experimental_rerun()
+                    st.rerun()
         else:
             st.info("Brak plików do wyświetlenia.")
 
