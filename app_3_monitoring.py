@@ -435,7 +435,15 @@ def main():
                 progress_bar.progress(100)
                 file_name = "best_gbr_model.pkl"
                 object_name = "models/best_gbr_model.pkl"
-                client_do.upload_file(file_name, DO_SPACE_NAME, object_name)
+
+                if os.path.exists(file_name):
+                     client_do.upload_file(file_name, DO_SPACE_NAME, object_name)
+                     st.success(f"✅ Model zapisany w DigitalOcean jako {object_name}")
+                else:
+                     st.error("❌ Nie znaleziono pliku modelu lokalnie. Sprawdź save_model.")
+                # file_name = "best_gbr_model.pkl"
+                # object_name = "models/best_gbr_model.pkl"
+                # client_do.upload_file(file_name, DO_SPACE_NAME, object_name)
                 # print("✅ Model zapisany w DigitalOcean Spaces!")
 
 
