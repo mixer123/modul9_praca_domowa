@@ -13,6 +13,7 @@ import streamlit as st
 from pycaret.regression import setup, compare_models, tune_model, save_model, load_model, predict_model, create_model
 from openai import OpenAI
 from langfuse import Langfuse
+import glob
 
 # =========================
 # 🔑 Konfiguracja i stałe
@@ -433,14 +434,23 @@ def main():
                 status_text.text("💾 Zapis modelu...")
                 save_model(tuned_lr, 'best_gbr_model')
                 progress_bar.progress(100)
-                file_name = "best_gbr_model.pkl"
-                object_name = "models/best_gbr_model.pkl"
-
-                if os.path.exists(file_name):
-                     client_do.upload_file(file_name, DO_SPACE_NAME, object_name)
-                     st.success(f"✅ Model zapisany w DigitalOcean jako {object_name}")
+                # file_name = "best_gbr_model.pkl"
+                # object_name = "models/best_gbr_model.pkl"
+                # model_files = glob.glob("best_gbr_model*.pkl")
+                model_files = glob.glob("best_gbr_model*.pkl")
+                if model_files:
+                    local_model_path = model_files[0]   # bierzemy pierwszy znaleziony plik
+                    object_name = "models/best_gbr_model.pkl"
+                    client_do.upload_file(local_model_path, DO_SPACE_NAME, object_name)
+                    st.success(f"✅ Model zapisany w DigitalOcean jako {object_name}")
                 else:
-                     st.error("❌ Nie znaleziono pliku modelu lokalnie. Sprawdź save_model.")
+                    st.error("❌ Nie znaleziono pliku modelu lokalnie. Sprawdź save_model.")
+
+                # if os.path.exists(file_name):
+                #      client_do.upload_file(file_name, DO_SPACE_NAME, object_name)
+                #      st.success(f"✅ Model zapisany w DigitalOcean jako {object_name}")
+                # else:
+                #      st.error("❌ Nie znaleziono pliku modelu lokalnie. Sprawdź save_model.")
                 # file_name = "best_gbr_model.pkl"
                 # object_name = "models/best_gbr_model.pkl"
                 # client_do.upload_file(file_name, DO_SPACE_NAME, object_name)
